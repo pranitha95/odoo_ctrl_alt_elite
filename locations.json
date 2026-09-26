@@ -1,0 +1,30 @@
+[
+  {
+    "id": "loc_wh_main_stock",
+    "name": "WH/Stock",
+    "shortCode": "WH-STOCK",
+    "warehouseId": "wh_main",
+    "type": "internal"
+  },
+  {
+    "id": "loc_wh_main_shelfb",
+    "name": "WH/Shelf B",
+    "shortCode": "WH-SHELF-B",
+    "warehouseId": "wh_main",
+    "type": "internal"
+  },
+  {
+    "id": "loc_vendors",
+    "name": "Vendors",
+    "shortCode": "VENDORS",
+    "warehouseId": null,
+    "type": "vendor"
+  },
+  {
+    "id": "loc_customers",
+    "name": "Customers",
+    "shortCode": "CUSTOMERS",
+    "warehouseId": null,
+    "type": "customer"
+  }
+]
