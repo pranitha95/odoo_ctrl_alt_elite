@@ -1,17 +1,11 @@
 """
 StockSense Backend Server
---------------------------
-Rewritten to match the problem statement:
   - Authentication (signup / login / OTP password reset)
-  - Multi-warehouse & multi-location stock (Vendors -> Stock -> Customers, like Odoo)
+  - Multi-warehouse & multi-location stock (Vendors -> Stock -> Customers)
   - Receipts / Delivery / Internal Transfer / Adjustment all move stock through
     real (or virtual) locations instead of one flat "currentStock" number
   - Every stock change is written to an immutable ledger (Move History)
   - Low-stock is driven by a per-product reorder point, not a hardcoded number
-
-Still a single-file, dependency-free HTTP server (stdlib only) so it can run
-anywhere during judging, but the data model now actually matches the
-architecture the app needs.
 """
 
 from http.server import HTTPServer, BaseHTTPRequestHandler
