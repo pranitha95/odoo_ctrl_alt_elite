@@ -1,0 +1,66 @@
+[
+  {
+    "id": "op_101",
+    "type": "Receipt",
+    "status": "Ready",
+    "partner": "Supplier A",
+    "sourceLocationId": "loc_vendors",
+    "destinationLocationId": "loc_wh_main_stock",
+    "items": [
+      {
+        "productId": "prod_1",
+        "quantity": 50
+      }
+    ],
+    "scheduledDate": "2026-09-25T10:00:00Z",
+    "createdAt": "2026-09-25T10:00:00Z"
+  },
+  {
+    "id": "op_102",
+    "type": "Delivery",
+    "status": "Ready",
+    "partner": "Client X",
+    "sourceLocationId": "loc_wh_main_stock",
+    "destinationLocationId": "loc_customers",
+    "items": [
+      {
+        "productId": "prod_2",
+        "quantity": 20
+      }
+    ],
+    "scheduledDate": "2026-09-25T11:30:00Z",
+    "createdAt": "2026-09-25T11:30:00Z"
+  },
+  {
+    "id": "op_103",
+    "type": "Internal",
+    "status": "Ready",
+    "partner": null,
+    "sourceLocationId": "loc_wh_main_stock",
+    "destinationLocationId": "loc_wh_main_shelfb",
+    "items": [
+      {
+        "productId": "prod_1",
+        "quantity": 10
+      }
+    ],
+    "scheduledDate": "2026-09-26T08:15:00Z",
+    "createdAt": "2026-09-26T08:15:00Z"
+  },
+  {
+    "id": "op_104",
+    "type": "Adjustment",
+    "status": "Ready",
+    "partner": "System Audit",
+    "sourceLocationId": "loc_wh_main_stock",
+    "destinationLocationId": "loc_wh_main_stock",
+    "items": [
+      {
+        "productId": "prod_2",
+        "quantity": 480
+      }
+    ],
+    "scheduledDate": "2026-09-26T09:00:00Z",
+    "createdAt": "2026-09-26T09:00:00Z"
+  }
+]
