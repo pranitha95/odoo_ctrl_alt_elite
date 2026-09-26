@@ -1,0 +1,24 @@
+[
+  {
+    "id": "user_1790401167564_7c27",
+    "name": "Alex",
+    "email": "alex@odoo.com",
+    "role": "Inventory Manager",
+    "salt": "1b3b9063a381fb0d",
+    "passwordHash": "b265c7e091c1354da9c6a05a4a3601219388d759fc7b245765d892dac67038b6",
+    "otp": null,
+    "otpExpiry": null,
+    "createdAt": "2026-09-26T11:09:27.564687"
+  },
+  {
+    "id": "user_1790415161840_5b11",
+    "name": "John",
+    "email": "john@stock.com",
+    "role": "Warehouse Staff",
+    "salt": "7d7afcd3a56204da",
+    "passwordHash": "d801a250434d39baf8d1f5067353ce4376ff4400f33b0e14c78ee440630b71c3",
+    "otp": null,
+    "otpExpiry": null,
+    "createdAt": "2026-09-26T15:02:41.840627"
+  }
+]
