@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard · StockSense</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+
+<div id="sidebar-root"></div>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <h1>Inventory Dashboard</h1>
+      <p>Live snapshot of stock, receipts, deliveries and transfers</p>
+    </div>
+    <button class="btn-secondary" onclick="loadDashboard()">↻ Refresh</button>
+  </div>
+
+  <div class="content">
+    <div class="status-line" id="statusLine">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Connecting to API…</span>
+    </div>
+
+    <!-- KPIs per the problem statement -->
+    <div class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-header"><span class="metric-title">Total Products</span><div class="metric-icon purple">📦</div></div>
+        <div class="metric-value" id="kpiTotalProducts">--</div>
+        <div class="metric-footer">Active SKUs cataloged</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-header"><span class="metric-title">Low / Out of Stock</span><div class="metric-icon red">⚠️</div></div>
+        <div class="metric-value" id="kpiLowStock">--</div>
+        <div class="metric-footer" id="kpiLowStockSub">At or below reorder point</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-header"><span class="metric-title">Pending Receipts</span><div class="metric-icon green">📥</div></div>
+        <div class="metric-value" id="kpiPendingReceipts">--</div>
+        <div class="metric-footer">Awaiting validation</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-header"><span class="metric-title">Pending Deliveries</span><div class="metric-icon amber">🚚</div></div>
+        <div class="metric-value" id="kpiPendingDeliveries">--</div>
+        <div class="metric-footer">Awaiting validation</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-header"><span class="metric-title">Internal Transfers Scheduled</span><div class="metric-icon blue">🔁</div></div>
+        <div class="metric-value" id="kpiInternalTransfers">--</div>
+        <div class="metric-footer">Not yet completed</div>
+      </div>
+    </div>
+
+    <!-- Dynamic filters, per spec: doc type / status / warehouse / category -->
+    <div class="toolbar">
+      <div class="toolbar-group">
+        <select class="select-filter" id="filterType" onchange="renderStream()">
+          <option value="ALL">All Document Types</option>
+          <option value="Receipt">Receipts</option>
+          <option value="Delivery">Delivery</option>
+          <option value="Internal">Internal</option>
+          <option value="Adjustment">Adjustments</option>
+        </select>
+        <select class="select-filter" id="filterStatus" onchange="renderStream()">
+          <option value="ALL">All Statuses</option>
+          <option value="Draft">Draft</option>
+          <option value="Waiting">Waiting</option>
+          <option value="Ready">Ready</option>
+          <option value="Done">Done</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+        <select class="select-filter" id="filterWarehouse" onchange="renderStream()">
+          <option value="ALL">All Warehouses</option>
+        </select>
+        <select class="select-filter" id="filterCategory" onchange="renderStream()">
+          <option value="ALL">All Categories</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-header">
+        <h2>Recent Operations</h2>
+        <span id="streamCount">Showing recent movements</span>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>ID / Scheduled</th>
+            <th>Type</th>
+            <th>Partner</th>
+            <th>Route (Src → Dest)</th>
+            <th>Items</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="streamBody">
+          <tr class="empty-row"><td colspan="6">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+  renderSidebar("dashboard");
+
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  let state = { products: [], operations: [], locations: [], warehouses: [] };
+
+  function setStatus(kind, message) {
+    statusDot.className = "status-dot" + (kind ? " " + kind : "");
+    statusText.textContent = message;
+  }
+
+  function locationLabel(id) {
+    const loc = state.locations.find(l => l.id === id);
+    return loc ? loc.name : (id || "—");
+  }
+
+  async function loadDashboard() {
+    setStatus(null, "Syncing…");
+    try {
+      const [products, operations, locations, warehouses] = await Promise.all([
+        apiFetch("/api/products"),
+        apiFetch("/api/operations"),
+        apiFetch("/api/locations"),
+        apiFetch("/api/warehouses")
+      ]);
+      state = { products, operations, locations, warehouses };
+      setStatus("ok", `Connected · ${products.length} products · ${operations.length} operations`);
+      populateFilterOptions();
+      renderKpis();
+      renderStream();
+    } catch (err) {
+      console.error(err);
+      setStatus("err", "Unable to reach backend at " + API_BASE + ". Is server.py running?");
+      document.getElementById("streamBody").innerHTML =
+        '<tr class="empty-row"><td colspan="6">Failed to load data. Start server.py and refresh.</td></tr>';
+    }
+  }
+
+  function populateFilterOptions() {
+    const whSelect = document.getElementById("filterWarehouse");
+    const existingWh = new Set([...whSelect.options].map(o => o.value));
+    state.warehouses.forEach(w => {
+      if (!existingWh.has(w.id)) {
+        const opt = document.createElement("option");
+        opt.value = w.id; opt.textContent = w.name;
+        whSelect.appendChild(opt);
+      }
+    });
+
+    const catSelect = document.getElementById("filterCategory");
+    const existingCat = new Set([...catSelect.options].map(o => o.value));
+    [...new Set(state.products.map(p => p.category).filter(Boolean))].forEach(c => {
+      if (!existingCat.has(c)) {
+        const opt = document.createElement("option");
+        opt.value = c; opt.textContent = c;
+        catSelect.appendChild(opt);
+      }
+    });
+  }
+
+  function renderKpis() {
+    const { products, operations } = state;
+    document.getElementById("kpiTotalProducts").textContent = products.length;
+
+    const lowOrOut = products.filter(p => p.isLowStock || p.isOutOfStock).length;
+    const outCount = products.filter(p => p.isOutOfStock).length;
+    document.getElementById("kpiLowStock").textContent = lowOrOut;
+    document.getElementById("kpiLowStockSub").textContent = `${outCount} out of stock`;
+
+    const pending = (type) => operations.filter(o => o.type === type && o.status !== "Done" && o.status !== "Cancelled").length;
+    document.getElementById("kpiPendingReceipts").textContent = pending("Receipt");
+    document.getElementById("kpiPendingDeliveries").textContent = pending("Delivery");
+    document.getElementById("kpiInternalTransfers").textContent = pending("Internal");
+  }
+
+  function renderStream() {
+    const typeVal = document.getElementById("filterType").value;
+    const statusVal = document.getElementById("filterStatus").value;
+    const whVal = document.getElementById("filterWarehouse").value;
+    const catVal = document.getElementById("filterCategory").value;
+
+    const productsById = Object.fromEntries(state.products.map(p => [p.id, p]));
+    const locationsById = Object.fromEntries(state.locations.map(l => [l.id, l]));
+
+    let ops = state.operations.filter(op => {
+      if (typeVal !== "ALL" && op.type !== typeVal) return false;
+      if (statusVal !== "ALL" && op.status !== statusVal) return false;
+      if (whVal !== "ALL") {
+        const srcWh = locationsById[op.sourceLocationId]?.warehouseId;
+        const dstWh = locationsById[op.destinationLocationId]?.warehouseId;
+        if (srcWh !== whVal && dstWh !== whVal) return false;
+      }
+      if (catVal !== "ALL") {
+        const hasCategory = (op.items || []).some(i => productsById[i.productId]?.category === catVal);
+        if (!hasCategory) return false;
+      }
+      return true;
+    });
+
+    ops = [...ops].sort((a, b) => new Date(b.scheduledDate || b.createdAt) - new Date(a.scheduledDate || a.createdAt));
+
+    const body = document.getElementById("streamBody");
+    document.getElementById("streamCount").textContent = `${ops.length} operation(s)`;
+
+    if (ops.length === 0) {
+      body.innerHTML = '<tr class="empty-row"><td colspan="6">No operations match these filters.</td></tr>';
+      return;
+    }
+
+    body.innerHTML = ops.map(op => {
+      const itemSummary = (op.items || []).map(i => {
+        const p = productsById[i.productId];
+        return `${p ? p.name : i.productId} (x${i.quantity})`;
+      }).join(", ") || "—";
+      return `
+        <tr>
+          <td>
+            <div style="font-weight:600;font-size:13px;">${escapeHtml(op.id)}</div>
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">${escapeHtml(formatDate(op.scheduledDate || op.createdAt))}</div>
+          </td>
+          <td>${typePill(op.type)}</td>
+          <td>${escapeHtml(op.partner || "—")}</td>
+          <td>${escapeHtml(locationLabel(op.sourceLocationId))} → ${escapeHtml(locationLabel(op.destinationLocationId))}</td>
+          <td style="font-size:13px;">${escapeHtml(itemSummary)}</td>
+          <td>${statusPill(op.status)}</td>
+        </tr>`;
+    }).join("");
+  }
+
+  loadDashboard();
+</script>
+
+</body>
+</html>
