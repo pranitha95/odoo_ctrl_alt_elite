@@ -1,0 +1,30 @@
+[
+  {
+    "id": "prod_1",
+    "name": "Steel Rod 12mm",
+    "sku": "SR-12MM",
+    "category": "Raw Materials",
+    "uom": "Meters",
+    "reorderPoint": 30,
+    "stock": [
+      {
+        "locationId": "loc_wh_main_stock",
+        "quantity": 150
+      }
+    ]
+  },
+  {
+    "id": "prod_2",
+    "name": "Industrial Fastener",
+    "sku": "IF-900",
+    "category": "Hardware",
+    "uom": "Units",
+    "reorderPoint": 100,
+    "stock": [
+      {
+        "locationId": "loc_wh_main_stock",
+        "quantity": 500
+      }
+    ]
+  }
+]
