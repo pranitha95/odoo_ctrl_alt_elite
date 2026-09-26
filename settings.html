@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Settings · StockSense</title>
+<link rel="stylesheet" href="common.css">
+<style>
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+
+<div id="sidebar-root"></div>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <h1>Warehouses &amp; Locations</h1>
+      <p>Multi-warehouse support — every product's stock lives at a specific location</p>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="status-line" id="statusLine">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Loading…</span>
+    </div>
+
+    <div class="two-col">
+      <!-- Warehouses -->
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Warehouses</h2>
+          <button class="btn-primary" style="padding:7px 14px;font-size:13px;" onclick="openWarehouseModal()">+ Add Warehouse</button>
+        </div>
+        <table>
+          <thead><tr><th>Name</th><th>Short Code</th><th>Address</th></tr></thead>
+          <tbody id="warehouseBody"><tr class="empty-row"><td colspan="3">Loading…</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- Locations -->
+      <div class="section-card">
+        <div class="section-header">
+          <h2>Locations</h2>
+          <button class="btn-primary" style="padding:7px 14px;font-size:13px;" onclick="openLocationModal()">+ Add Location</button>
+        </div>
+        <table>
+          <thead><tr><th>Name</th><th>Short Code</th><th>Warehouse</th><th>Type</th></tr></thead>
+          <tbody id="locationBody"><tr class="empty-row"><td colspan="4">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Warehouse Modal -->
+<div class="modal-overlay" id="warehouseModalOverlay">
+  <div class="modal">
+    <div class="modal-header"><h2>Add Warehouse</h2><button class="modal-close" onclick="closeWarehouseModal()">&times;</button></div>
+    <form id="warehouseForm">
+      <div class="modal-body">
+        <div class="field"><label>Name</label><input type="text" id="whName" required placeholder="e.g. North Distribution Center"></div>
+        <div class="field"><label>Short Code</label><input type="text" id="whCode" placeholder="e.g. NDC"></div>
+        <div class="field"><label>Address</label><input type="text" id="whAddress" placeholder="Street, City"></div>
+        <div class="field-hint">A default "/Stock" location is created automatically for this warehouse.</div>
+        <div class="form-error" id="whFormError"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeWarehouseModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Save Warehouse</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Location Modal -->
+<div class="modal-overlay" id="locationModalOverlay">
+  <div class="modal">
+    <div class="modal-header"><h2>Add Location</h2><button class="modal-close" onclick="closeLocationModal()">&times;</button></div>
+    <form id="locationForm">
+      <div class="modal-body">
+        <div class="field"><label>Name</label><input type="text" id="locName" required placeholder="e.g. Shelf B"></div>
+        <div class="field"><label>Short Code</label><input type="text" id="locCode" placeholder="e.g. SHELF-B"></div>
+        <div class="field"><label>Warehouse</label><select id="locWarehouse" required></select></div>
+        <div class="form-error" id="locFormError"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" onclick="closeLocationModal()">Cancel</button>
+        <button type="submit" class="btn-primary">Save Location</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+  renderSidebar("settings");
+
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  let warehouses = [];
+  let locations = [];
+
+  function setStatus(kind, message) {
+    statusDot.className = "status-dot" + (kind ? " " + kind : "");
+    statusText.textContent = message;
+  }
+
+  async function loadAll() {
+    setStatus(null, "Loading…");
+    try {
+      [warehouses, locations] = await Promise.all([apiFetch("/api/warehouses"), apiFetch("/api/locations")]);
+      setStatus("ok", `Connected · ${warehouses.length} warehouse(s), ${locations.length} location(s)`);
+      renderWarehouses();
+      renderLocations();
+      populateWarehouseSelect();
+    } catch (err) {
+      setStatus("err", "Could not reach the API. Is server.py running on :8000?");
+    }
+  }
+
+  function renderWarehouses() {
+    const body = document.getElementById("warehouseBody");
+    if (warehouses.length === 0) {
+      body.innerHTML = '<tr class="empty-row"><td colspan="3">No warehouses yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = warehouses.map(w => `
+      <tr><td>${escapeHtml(w.name)}</td><td class="sku">${escapeHtml(w.shortCode)}</td><td>${escapeHtml(w.address || "—")}</td></tr>
+    `).join("");
+  }
+
+  function renderLocations() {
+    const body = document.getElementById("locationBody");
+    const whName = id => warehouses.find(w => w.id === id)?.name || "—";
+    if (locations.length === 0) {
+      body.innerHTML = '<tr class="empty-row"><td colspan="4">No locations yet.</td></tr>';
+      return;
+    }
+    body.innerHTML = locations.map(l => `
+      <tr>
+        <td>${escapeHtml(l.name)}</td>
+        <td class="sku">${escapeHtml(l.shortCode)}</td>
+        <td>${l.warehouseId ? escapeHtml(whName(l.warehouseId)) : "—"}</td>
+        <td><span class="pill pill-internal">${escapeHtml(l.type)}</span></td>
+      </tr>`).join("");
+  }
+
+  function populateWarehouseSelect() {
+    document.getElementById("locWarehouse").innerHTML =
+      warehouses.map(w => `<option value="${w.id}">${escapeHtml(w.name)}</option>`).join("");
+  }
+
+  function openWarehouseModal() { document.getElementById("warehouseModalOverlay").classList.add("open"); }
+  function closeWarehouseModal() { document.getElementById("warehouseModalOverlay").classList.remove("open"); document.getElementById("warehouseForm").reset(); document.getElementById("whFormError").classList.remove("show"); }
+  function openLocationModal() {
+    if (warehouses.length === 0) { alert("Create a warehouse first."); return; }
+    document.getElementById("locationModalOverlay").classList.add("open");
+  }
+  function closeLocationModal() { document.getElementById("locationModalOverlay").classList.remove("open"); document.getElementById("locationForm").reset(); document.getElementById("locFormError").classList.remove("show"); }
+
+  document.getElementById("warehouseForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("whFormError");
+    errorEl.classList.remove("show");
+    try {
+      await apiFetch("/api/warehouses", { method: "POST", body: JSON.stringify({
+        name: document.getElementById("whName").value.trim(),
+        shortCode: document.getElementById("whCode").value.trim(),
+        address: document.getElementById("whAddress").value.trim()
+      })});
+      closeWarehouseModal();
+      loadAll();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add("show");
+    }
+  });
+
+  document.getElementById("locationForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const errorEl = document.getElementById("locFormError");
+    errorEl.classList.remove("show");
+    try {
+      await apiFetch("/api/locations", { method: "POST", body: JSON.stringify({
+        name: document.getElementById("locName").value.trim(),
+        shortCode: document.getElementById("locCode").value.trim(),
+        warehouseId: document.getElementById("locWarehouse").value
+      })});
+      closeLocationModal();
+      loadAll();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.classList.add("show");
+    }
+  });
+
+  loadAll();
+</script>
+
+</body>
+</html>
