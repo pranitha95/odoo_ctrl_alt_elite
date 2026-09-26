@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Operations · StockSense</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+
+<div id="sidebar-root"></div>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <h1 id="pageTitle">Operations</h1>
+      <p id="pageSubtitle">Manage stock movements and validate them to update inventory</p>
+    </div>
+    <button class="btn-primary" id="openModalBtn">+ New Operation</button>
+  </div>
+
+  <div class="content">
+    <div class="tab-row" id="tabRow"></div>
+
+    <div class="status-line" id="statusLine">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Loading operations…</span>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="searchInput" class="search-input" placeholder="Search ID or partner…" oninput="renderTable()">
+      <div class="toolbar-group">
+        <select id="statusFilter" class="select-filter" onchange="renderTable()">
+          <option value="ALL">All Statuses</option>
+          <option value="Draft">Draft</option>
+          <option value="Waiting">Waiting</option>
+          <option value="Ready">Ready</option>
+          <option value="Done">Done</option>
+          <option value="Cancelled">Cancelled</option>
+        </select>
+        <button class="btn-secondary" onclick="loadOperations()">↻ Refresh</button>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Reference</th>
+            <th>Type</th>
+            <th>Partner</th>
+            <th>Source</th>
+            <th>Destination</th>
+            <th>Items</th>
+            <th>Scheduled</th>
+            <th>Status</th>
+            <th style="text-align:right;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="operationsTableBody">
+          <tr class="empty-row"><td colspan="9">Fetching operations…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Create Operation Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modalTitle">New Operation</h2>
+      <button class="modal-close" id="closeModalBtn">&times;</button>
+    </div>
+    <form id="opForm">
+      <div class="modal-body">
+        <div class="field-row">
+          <div class="field">
+            <label for="fieldType">Operation Type</label>
+            <select id="fieldType" onchange="onTypeChange()">
+              <option value="Receipt">Receipt (Incoming)</option>
+              <option value="Delivery">Delivery (Outgoing)</option>
+              <option value="Internal">Internal Transfer</option>
+              <option value="Adjustment">Stock Adjustment</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fieldStatus">Initial Status</label>
+            <select id="fieldStatus">
+              <option value="Draft">Draft</option>
+              <option value="Waiting">Waiting</option>
+              <option value="Ready" selected>Ready</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field" id="partnerField">
+          <label id="partnerLabel" for="fieldPartner">Supplier</label>
+          <input type="text" id="fieldPartner" placeholder="e.g. Supplier A">
+        </div>
+
+        <div class="field-row" id="locationRow">
+          <div class="field" id="sourceField">
+            <label id="sourceLabel" for="fieldSource">Source Location</label>
+            <select id="fieldSource"></select>
+          </div>
+          <div class="field" id="destField">
+            <label id="destLabel" for="fieldDest">Destination Location</label>
+            <select id="fieldDest"></select>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="fieldSchedule">Scheduled Date</label>
+          <input type="datetime-local" id="fieldSchedule">
+        </div>
+
+        <div class="field">
+          <label id="lineItemsLabel">Products</label>
+          <div class="line-items" id="lineItems"></div>
+          <button type="button" class="add-line-btn" id="addLineBtn">+ Add Product Line</button>
+        </div>
+
+        <div class="form-error" id="formError"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="cancelModalBtn">Cancel</button>
+        <button type="submit" class="btn-primary" id="submitBtn">Save Operation</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+  renderSidebar(activeKeyForType());
+
+  const TYPE_META = {
+    Receipt:    { title: "Receipts",          subtitle: "Incoming stock from vendors — validate to increase inventory", partnerLabel: "Supplier",  sourceLabel: "From",   destLabel: "To Warehouse", sourceLocTypes: ["vendor"],   destLocTypes: ["internal"] },
+    Delivery:   { title: "Delivery Orders",   subtitle: "Outgoing stock to customers — validate to decrease inventory", partnerLabel: "Customer",  sourceLabel: "From Warehouse", destLabel: "To", sourceLocTypes: ["internal"], destLocTypes: ["customer"] },
+    Internal:   { title: "Internal Transfers",subtitle: "Move stock between locations — total quantity stays the same", partnerLabel: "Reference (optional)", sourceLabel: "From", destLabel: "To", sourceLocTypes: ["internal"], destLocTypes: ["internal"] },
+    Adjustment: { title: "Stock Adjustments", subtitle: "Correct mismatches between recorded and counted stock", partnerLabel: "Reason / Auditor (optional)", sourceLabel: "Location", destLabel: "Location", sourceLocTypes: ["internal"], destLocTypes: ["internal"], single: true }
+  };
+
+  function activeKeyForType() {
+    const t = new URLSearchParams(location.search).get("type");
+    return { Receipt: "receipts", Delivery: "deliveries", Internal: "internal", Adjustment: "adjustments" }[t] || "receipts";
+  }
+
+  const params = new URLSearchParams(location.search);
+  let currentType = params.get("type") || "Receipt";
+  if (!TYPE_META[currentType]) currentType = "Receipt";
+
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const tableBody = document.getElementById("operationsTableBody");
+  const modalOverlay = document.getElementById("modalOverlay");
+  const opForm = document.getElementById("opForm");
+  const submitBtn = document.getElementById("submitBtn");
+  const formError = document.getElementById("formError");
+  const lineItemsEl = document.getElementById("lineItems");
+
+  let operations = [];
+  let products = [];
+  let locations = [];
+
+  function setStatus(kind, message) {
+    statusDot.className = "status-dot" + (kind ? " " + kind : "");
+    statusText.textContent = message;
+  }
+
+  function renderTabs() {
+    const tabRow = document.getElementById("tabRow");
+    tabRow.innerHTML = Object.keys(TYPE_META).map(t =>
+      `<button class="tab-btn ${t === currentType ? "active" : ""}" onclick="switchType('${t}')">${TYPE_META[t].title}</button>`
+    ).join("");
+  }
+
+  function switchType(type) {
+    currentType = type;
+    const url = new URL(location.href);
+    url.searchParams.set("type", type);
+    history.replaceState(null, "", url);
+    document.getElementById("pageTitle").textContent = TYPE_META[type].title;
+    document.getElementById("pageSubtitle").textContent = TYPE_META[type].subtitle;
+    renderTabs();
+    renderSidebar(activeKeyForType());
+    renderTable();
+  }
+
+  function locationName(id) {
+    const loc = locations.find(l => l.id === id);
+    return loc ? loc.name : (id || "—");
+  }
+
+  async function loadOperations() {
+    setStatus(null, "Loading operations…");
+    try {
+      [operations, products, locations] = await Promise.all([
+        apiFetch("/api/operations"),
+        apiFetch("/api/products"),
+        apiFetch("/api/locations")
+      ]);
+      setStatus("ok", `Connected · ${operations.length} operation(s) loaded`);
+      renderTable();
+    } catch (err) {
+      setStatus("err", "Could not reach the API. Is server.py running on :8000?");
+      tableBody.innerHTML = '<tr class="empty-row"><td colspan="9">Unable to load operations.</td></tr>';
+    }
+  }
+
+  function renderTable() {
+    const search = document.getElementById("searchInput").value.toLowerCase().trim();
+    const statusVal = document.getElementById("statusFilter").value;
+    const productsById = Object.fromEntries(products.map(p => [p.id, p]));
+
+    const filtered = operations.filter(op => {
+      if (op.type !== currentType) return false;
+      if (statusVal !== "ALL" && op.status !== statusVal) return false;
+      const haystack = `${op.id} ${op.partner || ""}`.toLowerCase();
+      return !search || haystack.includes(search);
+    });
+
+    if (filtered.length === 0) {
+      tableBody.innerHTML = '<tr class="empty-row"><td colspan="9">No matching operations found.</td></tr>';
+      return;
+    }
+
+    tableBody.innerHTML = filtered.map(op => {
+      const canValidate = ["Draft", "Waiting", "Ready"].includes(op.status);
+      const itemSummary = (op.items || []).map(i => {
+        const p = productsById[i.productId];
+        return `${p ? p.name : i.productId} (${i.quantity})`;
+      }).join(", ") || "—";
+
+      let actions = `<span style="color:var(--text-muted);font-size:12.5px;">Executed</span>`;
+      if (canValidate) {
+        actions = `
+          <button class="btn-validate" onclick="validateOp('${op.id}')">Validate</button>
+          <button class="btn-danger-outline" style="margin-left:6px;" onclick="cancelOp('${op.id}')">Cancel</button>`;
+      }
+
+      return `
+        <tr>
+          <td style="font-weight:600;">${escapeHtml(op.id)}</td>
+          <td>${typePill(op.type)}</td>
+          <td>${escapeHtml(op.partner || "—")}</td>
+          <td>${escapeHtml(locationName(op.sourceLocationId))}</td>
+          <td>${escapeHtml(locationName(op.destinationLocationId))}</td>
+          <td style="font-size:13px;">${escapeHtml(itemSummary)}</td>
+          <td style="font-size:12.5px;color:var(--text-muted);">${escapeHtml(formatDate(op.scheduledDate))}</td>
+          <td id="status-col-${op.id}">${statusPill(op.status)}</td>
+          <td style="text-align:right;" id="action-col-${op.id}">${actions}</td>
+        </tr>`;
+    }).join("");
+  }
+
+  async function validateOp(opId) {
+    const cell = document.getElementById(`action-col-${opId}`);
+    cell.innerHTML = `<span style="color:var(--accent);font-size:12.5px;">Validating…</span>`;
+    try {
+      await apiFetch("/api/operations/validate", { method: "POST", body: JSON.stringify({ id: opId }) });
+      await loadOperations();
+    } catch (err) {
+      alert("Failed to validate: " + err.message);
+      loadOperations();
+    }
+  }
+
+  async function cancelOp(opId) {
+    if (!confirm("Cancel this operation? This cannot be undone.")) return;
+    try {
+      await apiFetch("/api/operations/cancel", { method: "POST", body: JSON.stringify({ id: opId }) });
+      await loadOperations();
+    } catch (err) {
+      alert("Failed to cancel: " + err.message);
+    }
+  }
+
+  // ---------------- Create modal ----------------
+
+  function addLine(productId = "", qty = "") {
+    const row = document.createElement("div");
+    row.className = "line-item-row";
+    row.innerHTML = `
+      <select class="line-product">${products.map(p => `<option value="${p.id}" ${p.id === productId ? "selected" : ""}>${escapeHtml(p.name)} (${escapeHtml(p.sku)})</option>`).join("")}</select>
+      <input type="number" class="line-qty" min="1" placeholder="Qty" value="${qty}">
+      <button type="button" class="line-item-remove" onclick="this.closest('.line-item-row').remove()">&times;</button>
+    `;
+    lineItemsEl.appendChild(row);
+  }
+
+  document.getElementById("addLineBtn").addEventListener("click", () => addLine());
+
+  function populateLocationSelects() {
+    const meta = TYPE_META[document.getElementById("fieldType").value];
+    const srcSelect = document.getElementById("fieldSource");
+    const dstSelect = document.getElementById("fieldDest");
+    srcSelect.innerHTML = locations.filter(l => meta.sourceLocTypes.includes(l.type))
+      .map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join("");
+    dstSelect.innerHTML = locations.filter(l => meta.destLocTypes.includes(l.type))
+      .map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join("");
+  }
+
+  function onTypeChange() {
+    const type = document.getElementById("fieldType").value;
+    const meta = TYPE_META[type];
+    document.getElementById("modalTitle").textContent = `New ${meta.title.replace(/s$/, "")}`;
+    document.getElementById("partnerLabel").textContent = meta.partnerLabel;
+    document.getElementById("sourceLabel").textContent = meta.sourceLabel;
+    document.getElementById("destLabel").textContent = meta.destLabel;
+    document.getElementById("lineItemsLabel").textContent = type === "Adjustment" ? "Products & Counted Quantity" : "Products";
+    populateLocationSelects();
+
+    if (meta.single) {
+      // Adjustment: one location field only (source === destination).
+      document.getElementById("destField").style.display = "none";
+    } else {
+      document.getElementById("destField").style.display = "";
+    }
+  }
+
+  function openModal() {
+    document.getElementById("fieldType").value = currentType;
+    onTypeChange();
+    lineItemsEl.innerHTML = "";
+    addLine();
+    document.getElementById("fieldSchedule").value = new Date().toISOString().slice(0, 16);
+    formError.classList.remove("show");
+    modalOverlay.classList.add("open");
+  }
+
+  function closeModal() {
+    modalOverlay.classList.remove("open");
+    opForm.reset();
+  }
+
+  document.getElementById("openModalBtn").addEventListener("click", openModal);
+  document.getElementById("closeModalBtn").addEventListener("click", closeModal);
+  document.getElementById("cancelModalBtn").addEventListener("click", closeModal);
+  modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeModal(); });
+
+  opForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    formError.classList.remove("show");
+
+    const type = document.getElementById("fieldType").value;
+    const meta = TYPE_META[type];
+    const sourceId = document.getElementById("fieldSource").value;
+    const destId = meta.single ? sourceId : document.getElementById("fieldDest").value;
+
+    const items = [...lineItemsEl.querySelectorAll(".line-item-row")].map(row => ({
+      productId: row.querySelector(".line-product").value,
+      quantity: Number(row.querySelector(".line-qty").value || 0)
+    })).filter(i => i.productId && i.quantity > 0);
+
+    if (items.length === 0) {
+      formError.textContent = "Add at least one product with a quantity greater than zero.";
+      formError.classList.add("show");
+      return;
+    }
+
+    const payload = {
+      type,
+      status: document.getElementById("fieldStatus").value,
+      partner: document.getElementById("fieldPartner").value.trim() || null,
+      sourceLocationId: sourceId,
+      destinationLocationId: destId,
+      items,
+      scheduledDate: new Date(document.getElementById("fieldSchedule").value).toISOString()
+    };
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving…";
+    try {
+      await apiFetch("/api/operations", { method: "POST", body: JSON.stringify(payload) });
+      closeModal();
+      switchType(type);
+      await loadOperations();
+    } catch (err) {
+      formError.textContent = err.message;
+      formError.classList.add("show");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Save Operation";
+    }
+  });
+
+  // ---------------- init ----------------
+  document.getElementById("pageTitle").textContent = TYPE_META[currentType].title;
+  document.getElementById("pageSubtitle").textContent = TYPE_META[currentType].subtitle;
+  renderTabs();
+  loadOperations();
+</script>
+
+</body>
+</html>
