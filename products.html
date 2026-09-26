@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Products · StockSense</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+
+<div id="sidebar-root"></div>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <h1>Products</h1>
+      <p>Create products, set reorder points, and track stock across locations</p>
+    </div>
+    <button class="btn-primary" id="openModalBtn">+ Add Product</button>
+  </div>
+
+  <div class="content">
+    <div class="status-line" id="statusLine">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Loading products…</span>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="searchInput" class="search-input" placeholder="Search by name or SKU…" oninput="renderProducts()">
+      <div class="toolbar-group">
+        <select id="categoryFilter" class="select-filter" onchange="renderProducts()">
+          <option value="ALL">All Categories</option>
+        </select>
+        <select id="stockFilter" class="select-filter" onchange="renderProducts()">
+          <option value="ALL">All Stock Levels</option>
+          <option value="LOW">Low Stock</option>
+          <option value="OUT">Out of Stock</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Product Name</th>
+            <th>SKU / Code</th>
+            <th>Category</th>
+            <th>UOM</th>
+            <th>Reorder Point</th>
+            <th>Stock by Location</th>
+            <th>Total Stock</th>
+          </tr>
+        </thead>
+        <tbody id="productTableBody">
+          <tr class="empty-row"><td colspan="7">Fetching products…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Add Product Modal -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Add Product</h2>
+      <button class="modal-close" id="closeModalBtn" aria-label="Close">&times;</button>
+    </div>
+    <form id="addProductForm">
+      <div class="modal-body">
+        <div class="field">
+          <label for="fieldName">Product Name</label>
+          <input type="text" id="fieldName" required placeholder="e.g. Wireless Mouse">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="fieldSku">SKU / Code</label>
+            <input type="text" id="fieldSku" required placeholder="e.g. WM-1042">
+          </div>
+          <div class="field">
+            <label for="fieldCategory">Category</label>
+            <input type="text" id="fieldCategory" required placeholder="e.g. Accessories">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="fieldUom">Unit of Measure</label>
+            <select id="fieldUom" required>
+              <option value="">Select…</option>
+              <option>Units</option><option>Boxes</option><option>Kg</option>
+              <option>Litres</option><option>Pairs</option><option>Meters</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="fieldReorder">Reorder Point</label>
+            <input type="number" id="fieldReorder" min="0" value="0" placeholder="e.g. 20">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="fieldStock">Initial Stock (optional)</label>
+            <input type="number" id="fieldStock" min="0" placeholder="0">
+          </div>
+          <div class="field">
+            <label for="fieldLocation">Stock Location</label>
+            <select id="fieldLocation" required></select>
+          </div>
+        </div>
+        <div class="form-error" id="formError"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn-secondary" id="cancelModalBtn">Cancel</button>
+        <button type="submit" class="btn-primary" id="submitBtn">Save Product</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+  renderSidebar("products");
+
+  const tableBody = document.getElementById("productTableBody");
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const modalOverlay = document.getElementById("modalOverlay");
+  const addProductForm = document.getElementById("addProductForm");
+  const submitBtn = document.getElementById("submitBtn");
+  const formError = document.getElementById("formError");
+
+  let products = [];
+  let locations = [];
+
+  function setStatus(kind, message) {
+    statusDot.className = "status-dot" + (kind ? " " + kind : "");
+    statusText.textContent = message;
+  }
+
+  function locationName(id) {
+    const loc = locations.find(l => l.id === id);
+    return loc ? loc.name : id;
+  }
+
+  async function loadAll() {
+    setStatus(null, "Loading products…");
+    try {
+      [products, locations] = await Promise.all([
+        apiFetch("/api/products"),
+        apiFetch("/api/locations")
+      ]);
+      setStatus("ok", `Connected · ${products.length} product(s) loaded`);
+      populateCategoryFilter();
+      populateLocationSelect();
+      renderProducts();
+    } catch (err) {
+      setStatus("err", "Could not reach the API. Is server.py running on :8000?");
+      tableBody.innerHTML = '<tr class="empty-row"><td colspan="7">Unable to load products.</td></tr>';
+    }
+  }
+
+  function populateCategoryFilter() {
+    const select = document.getElementById("categoryFilter");
+    const existing = new Set([...select.options].map(o => o.value));
+    [...new Set(products.map(p => p.category).filter(Boolean))].forEach(c => {
+      if (!existing.has(c)) {
+        const opt = document.createElement("option");
+        opt.value = c; opt.textContent = c;
+        select.appendChild(opt);
+      }
+    });
+  }
+
+  function populateLocationSelect() {
+    const select = document.getElementById("fieldLocation");
+    select.innerHTML = locations.filter(l => l.type === "internal")
+      .map(l => `<option value="${l.id}">${escapeHtml(l.name)}</option>`).join("");
+  }
+
+  function renderProducts() {
+    tableBody.innerHTML = "";
+    const search = document.getElementById("searchInput").value.toLowerCase().trim();
+    const category = document.getElementById("categoryFilter").value;
+    const stockLevel = document.getElementById("stockFilter").value;
+
+    const filtered = products.filter(p => {
+      const matchesSearch = !search || p.name.toLowerCase().includes(search) || p.sku.toLowerCase().includes(search);
+      const matchesCategory = category === "ALL" || p.category === category;
+      const matchesStock = stockLevel === "ALL" ||
+        (stockLevel === "LOW" && p.isLowStock) ||
+        (stockLevel === "OUT" && p.isOutOfStock);
+      return matchesSearch && matchesCategory && matchesStock;
+    });
+
+    if (filtered.length === 0) {
+      tableBody.innerHTML = '<tr class="empty-row"><td colspan="7">No products match these filters.</td></tr>';
+      return;
+    }
+
+    filtered.forEach(p => {
+      const stockBreakdown = (p.stock || [])
+        .filter(s => s.quantity > 0)
+        .map(s => `${escapeHtml(locationName(s.locationId))}: ${s.quantity}`)
+        .join(", ") || "—";
+
+      let badge = "";
+      if (p.isOutOfStock) badge = '<span class="badge-out">Out of Stock</span>';
+      else if (p.isLowStock) badge = '<span class="badge-low">Low Stock</span>';
+
+      const row = document.createElement("tr");
+      row.innerHTML = `
+        <td>${escapeHtml(p.name)}</td>
+        <td class="sku">${escapeHtml(p.sku)}</td>
+        <td>${escapeHtml(p.category)}</td>
+        <td>${escapeHtml(p.uom)}</td>
+        <td>${p.reorderPoint ?? 0}</td>
+        <td style="font-size:12.5px;color:var(--text-muted);">${stockBreakdown}</td>
+        <td><div style="display:flex;align-items:center;gap:8px;"><strong>${p.currentStock}</strong>${badge}</div></td>
+      `;
+      tableBody.appendChild(row);
+    });
+  }
+
+  document.getElementById("openModalBtn").addEventListener("click", () => {
+    modalOverlay.classList.add("open");
+    formError.classList.remove("show");
+    document.getElementById("fieldName").focus();
+  });
+  function closeModal() {
+    modalOverlay.classList.remove("open");
+    addProductForm.reset();
+    formError.classList.remove("show");
+  }
+  document.getElementById("closeModalBtn").addEventListener("click", closeModal);
+  document.getElementById("cancelModalBtn").addEventListener("click", closeModal);
+  modalOverlay.addEventListener("click", (e) => { if (e.target === modalOverlay) closeModal(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && modalOverlay.classList.contains("open")) closeModal(); });
+
+  addProductForm.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    formError.classList.remove("show");
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Saving…";
+
+    const payload = {
+      name: document.getElementById("fieldName").value.trim(),
+      sku: document.getElementById("fieldSku").value.trim(),
+      category: document.getElementById("fieldCategory").value.trim(),
+      uom: document.getElementById("fieldUom").value,
+      reorderPoint: Number(document.getElementById("fieldReorder").value || 0),
+      initialStock: Number(document.getElementById("fieldStock").value || 0),
+      locationId: document.getElementById("fieldLocation").value
+    };
+
+    try {
+      await apiFetch("/api/products", { method: "POST", body: JSON.stringify(payload) });
+      closeModal();
+      loadAll();
+    } catch (err) {
+      formError.textContent = err.message;
+      formError.classList.add("show");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Save Product";
+    }
+  });
+
+  loadAll();
+</script>
+
+</body>
+</html>
