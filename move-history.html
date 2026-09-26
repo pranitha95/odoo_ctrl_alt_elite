@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Move History · StockSense</title>
+<link rel="stylesheet" href="common.css">
+</head>
+<body>
+
+<div id="sidebar-root"></div>
+
+<div class="main">
+  <div class="topbar">
+    <div>
+      <h1>Move History</h1>
+      <p>Immutable audit log of every stock movement, by product and location</p>
+    </div>
+    <button class="btn-secondary" onclick="loadHistory()">↻ Refresh</button>
+  </div>
+
+  <div class="content">
+    <div class="status-line" id="statusLine">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Loading ledger…</span>
+    </div>
+
+    <div class="toolbar">
+      <input type="text" id="searchInput" class="search-input" placeholder="Search product or reference…" oninput="renderTable()">
+      <div class="toolbar-group">
+        <select id="typeFilter" class="select-filter" onchange="renderTable()">
+          <option value="ALL">All Types</option>
+          <option value="Receipt">Receipt</option>
+          <option value="Delivery">Delivery</option>
+          <option value="Internal">Internal</option>
+          <option value="Adjustment">Adjustment</option>
+        </select>
+        <select id="locationFilter" class="select-filter" onchange="renderTable()">
+          <option value="ALL">All Locations</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>Reference</th>
+            <th>Timestamp</th>
+            <th>Type</th>
+            <th>Product</th>
+            <th>Location</th>
+            <th>Before → After</th>
+            <th>Change</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody">
+          <tr class="empty-row"><td colspan="7">Fetching move history…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script src="common.js"></script>
+<script>
+  renderSidebar("move-history");
+
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const historyBody = document.getElementById("historyBody");
+  let ledger = [];
+  let locations = [];
+
+  function setStatus(kind, message) {
+    statusDot.className = "status-dot" + (kind ? " " + kind : "");
+    statusText.textContent = message;
+  }
+
+  function locationName(id) {
+    const loc = locations.find(l => l.id === id);
+    return loc ? loc.name : (id || "—");
+  }
+
+  async function loadHistory() {
+    setStatus(null, "Loading ledger…");
+    try {
+      [ledger, locations] = await Promise.all([
+        apiFetch("/api/ledger"),
+        apiFetch("/api/locations")
+      ]);
+      setStatus("ok", `Connected · ${ledger.length} ledger entries`);
+      populateLocationFilter();
+      renderTable();
+    } catch (err) {
+      setStatus("err", "Could not reach the API. Is server.py running on :8000?");
+      historyBody.innerHTML = '<tr class="empty-row"><td colspan="7">Unable to load move history.</td></tr>';
+    }
+  }
+
+  function populateLocationFilter() {
+    const select = document.getElementById("locationFilter");
+    const existing = new Set([...select.options].map(o => o.value));
+    locations.forEach(l => {
+      if (!existing.has(l.id)) {
+        const opt = document.createElement("option");
+        opt.value = l.id; opt.textContent = l.name;
+        select.appendChild(opt);
+      }
+    });
+  }
+
+  function renderTable() {
+    const search = document.getElementById("searchInput").value.toLowerCase().trim();
+    const typeVal = document.getElementById("typeFilter").value;
+    const locVal = document.getElementById("locationFilter").value;
+
+    const filtered = ledger.filter(entry => {
+      if (typeVal !== "ALL" && entry.type !== typeVal) return false;
+      if (locVal !== "ALL" && entry.locationId !== locVal) return false;
+      const haystack = `${entry.operationId} ${entry.productName}`.toLowerCase();
+      return !search || haystack.includes(search);
+    });
+
+    filtered.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    if (filtered.length === 0) {
+      historyBody.innerHTML = '<tr class="empty-row"><td colspan="7">No ledger entries match these filters.</td></tr>';
+      return;
+    }
+
+    historyBody.innerHTML = filtered.map(entry => {
+      const changeCls = entry.quantityChange > 0 ? "pos" : (entry.quantityChange < 0 ? "neg" : "neutral");
+      const changeStr = entry.quantityChange > 0 ? `+${entry.quantityChange}` : `${entry.quantityChange}`;
+      return `
+        <tr>
+          <td style="font-weight:600;">${escapeHtml(entry.operationId)}</td>
+          <td style="font-size:12.5px;color:var(--text-muted);">${escapeHtml(formatDate(entry.timestamp))}</td>
+          <td>${typePill(entry.type)}</td>
+          <td>${escapeHtml(entry.productName)}</td>
+          <td>${escapeHtml(locationName(entry.locationId))}</td>
+          <td>${entry.previousStock} → ${entry.newStock}</td>
+          <td class="qty-change ${changeCls}">${changeStr}</td>
+        </tr>`;
+    }).join("");
+  }
+
+  loadHistory();
+</script>
+
+</body>
+</html>
