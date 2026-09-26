@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sign in · StockSense</title>
+<style>
+  :root {
+    --accent: #714b67; --accent-dark: #5c3c54; --bg: #1c1a21; --card-bg: #ffffff;
+    --border: #e2e1e8; --text-dark: #232028; --text-muted: #726f7d;
+    --danger: #c93b3b; --danger-bg: #fbe9e9; --success: #2e7d5b; --success-bg: #eaf5f0;
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; font-family: var(--font);
+    background: radial-gradient(circle at top left, #2f2c37, #1c1a21 60%);
+    display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .card { background: var(--card-bg); width: 400px; max-width: 100%; border-radius: 14px; box-shadow: 0 30px 60px rgba(0,0,0,0.35); padding: 34px 32px; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 22px; }
+  .brand-mark { width: 34px; height: 34px; border-radius: 8px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; }
+  .brand-name { font-weight: 700; font-size: 17px; color: var(--text-dark); }
+  h1 { font-size: 19px; margin: 0 0 4px 0; color: var(--text-dark); }
+  p.sub { margin: 0 0 22px 0; font-size: 13px; color: var(--text-muted); }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; font-size: 12.5px; font-weight: 600; color: var(--text-muted); margin-bottom: 6px; }
+  .field input, .field select { width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 6px; font-size: 14px; font-family: inherit; }
+  .field input:focus, .field select:focus { outline: none; border-color: var(--accent); }
+  .btn-primary { width: 100%; background: var(--accent); color: #fff; border: none; padding: 11px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-primary:hover { background: var(--accent-dark); }
+  .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; }
+  .btn-link { background: none; border: none; color: var(--accent); font-size: 13px; cursor: pointer; padding: 0; }
+  .btn-link:hover { text-decoration: underline; }
+  .row-between { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; font-size: 13px; color: var(--text-muted); }
+  .alert { font-size: 12.5px; padding: 10px 12px; border-radius: 6px; margin-bottom: 14px; display: none; }
+  .alert.show { display: block; }
+  .alert.error { background: var(--danger-bg); color: var(--danger); }
+  .alert.success { background: var(--success-bg); color: var(--success); }
+  .view { display: none; }
+  .view.active { display: block; }
+  .dev-note { font-size: 11px; color: var(--text-muted); background: #f4f4f7; border: 1px dashed var(--border); border-radius: 6px; padding: 8px 10px; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="brand">
+    <div class="brand-mark">SS</div>
+    <div class="brand-name">StockSense</div>
+  </div>
+
+  <!-- LOGIN -->
+  <div class="view active" id="view-login">
+    <h1>Welcome back</h1>
+    <p class="sub">Sign in to your Inventory Dashboard</p>
+    <div class="alert error" id="loginError"></div>
+    <form id="loginForm">
+      <div class="field"><label>Email</label><input type="email" id="loginEmail" required placeholder="you@company.com"></div>
+      <div class="field"><label>Password</label><input type="password" id="loginPassword" required placeholder="••••••••"></div>
+      <button class="btn-primary" type="submit" id="loginSubmit">Sign In</button>
+    </form>
+    <div class="row-between">
+      <button class="btn-link" onclick="showView('forgot')">Forgot password?</button>
+      <button class="btn-link" onclick="showView('signup')">Create account</button>
+    </div>
+  </div>
+
+  <!-- SIGNUP -->
+  <div class="view" id="view-signup">
+    <h1>Create your account</h1>
+    <p class="sub">Set up access to the Inventory Dashboard</p>
+    <div class="alert error" id="signupError"></div>
+    <form id="signupForm">
+      <div class="field"><label>Full Name</label><input type="text" id="signupName" required placeholder="Jane Cooper"></div>
+      <div class="field"><label>Email</label><input type="email" id="signupEmail" required placeholder="you@company.com"></div>
+      <div class="field">
+        <label>Role</label>
+        <select id="signupRole">
+          <option>Inventory Manager</option>
+          <option>Warehouse Staff</option>
+        </select>
+      </div>
+      <div class="field"><label>Password</label><input type="password" id="signupPassword" required minlength="6" placeholder="At least 6 characters"></div>
+      <button class="btn-primary" type="submit" id="signupSubmit">Sign Up</button>
+    </form>
+    <div class="row-between">
+      <button class="btn-link" onclick="showView('login')">&larr; Back to sign in</button>
+    </div>
+  </div>
+
+  <!-- FORGOT PASSWORD: step 1 request OTP -->
+  <div class="view" id="view-forgot">
+    <h1>Reset your password</h1>
+    <p class="sub">We'll send a one-time code to your email</p>
+    <div class="alert error" id="forgotError"></div>
+    <div class="alert success" id="forgotSuccess"></div>
+    <form id="forgotForm">
+      <div class="field"><label>Email</label><input type="email" id="forgotEmail" required placeholder="you@company.com"></div>
+      <button class="btn-primary" type="submit" id="forgotSubmit">Send OTP</button>
+    </form>
+    <div class="row-between">
+      <button class="btn-link" onclick="showView('login')">&larr; Back to sign in</button>
+    </div>
+  </div>
+
+  <!-- FORGOT PASSWORD: step 2 enter OTP + new password -->
+  <div class="view" id="view-reset">
+    <h1>Enter the code</h1>
+    <p class="sub">Check your email for the 6-digit OTP</p>
+    <div class="alert error" id="resetError"></div>
+    <form id="resetForm">
+      <div class="field"><label>OTP Code</label><input type="text" id="resetOtp" required maxlength="6" placeholder="123456"></div>
+      <div class="field"><label>New Password</label><input type="password" id="resetPassword" required minlength="6" placeholder="At least 6 characters"></div>
+      <button class="btn-primary" type="submit" id="resetSubmit">Reset Password</button>
+    </form>
+    <div class="row-between">
+      <button class="btn-link" onclick="showView('login')">&larr; Back to sign in</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = "http://localhost:8000";
+  let resetEmail = "";
+
+  function showView(name) {
+    document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+    document.getElementById("view-" + name).classList.add("active");
+  }
+
+  function setAlert(id, message, ok) {
+    const el = document.getElementById(id);
+    if (!message) { el.classList.remove("show"); return; }
+    el.textContent = message;
+    el.className = "alert show " + (ok ? "success" : "error");
+  }
+
+  async function api(path, body) {
+    const res = await fetch(API_BASE + path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || "Something went wrong");
+    return data;
+  }
+
+  function saveSession(token, user) {
+    localStorage.setItem("ss_token", token);
+    localStorage.setItem("ss_user", JSON.stringify(user));
+  }
+
+  // Redirect straight to dashboard if already signed in.
+  if (localStorage.getItem("ss_token")) {
+    window.location.href = "index.html";
+  }
+
+  document.getElementById("loginForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setAlert("loginError", "");
+    const btn = document.getElementById("loginSubmit");
+    btn.disabled = true; btn.textContent = "Signing in…";
+    try {
+      const data = await api("/api/auth/login", {
+        email: document.getElementById("loginEmail").value.trim(),
+        password: document.getElementById("loginPassword").value
+      });
+      saveSession(data.token, data.user);
+      window.location.href = "index.html";
+    } catch (err) {
+      setAlert("loginError", err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = "Sign In";
+    }
+  });
+
+  document.getElementById("signupForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setAlert("signupError", "");
+    const btn = document.getElementById("signupSubmit");
+    btn.disabled = true; btn.textContent = "Creating account…";
+    try {
+      const data = await api("/api/auth/signup", {
+        name: document.getElementById("signupName").value.trim(),
+        email: document.getElementById("signupEmail").value.trim(),
+        role: document.getElementById("signupRole").value,
+        password: document.getElementById("signupPassword").value
+      });
+      saveSession(data.token, data.user);
+      window.location.href = "index.html";
+    } catch (err) {
+      setAlert("signupError", err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = "Sign Up";
+    }
+  });
+
+  document.getElementById("forgotForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setAlert("forgotError", ""); setAlert("forgotSuccess", "");
+    const btn = document.getElementById("forgotSubmit");
+    btn.disabled = true; btn.textContent = "Sending…";
+    try {
+      resetEmail = document.getElementById("forgotEmail").value.trim();
+      const data = await api("/api/auth/forgot-password", { email: resetEmail });
+      let msg = data.message;
+      if (data.devOtp) msg += ` (Demo mode — no email service is wired up, your OTP is ${data.devOtp})`;
+      setAlert("forgotSuccess", msg, true);
+      setTimeout(() => showView("reset"), 900);
+    } catch (err) {
+      setAlert("forgotError", err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = "Send OTP";
+    }
+  });
+
+  document.getElementById("resetForm").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    setAlert("resetError", "");
+    const btn = document.getElementById("resetSubmit");
+    btn.disabled = true; btn.textContent = "Resetting…";
+    try {
+      await api("/api/auth/reset-password", {
+        email: resetEmail,
+        otp: document.getElementById("resetOtp").value.trim(),
+        newPassword: document.getElementById("resetPassword").value
+      });
+      showView("login");
+      setAlert("loginError", "Password updated — please sign in.", true);
+      document.getElementById("loginError").className = "alert show success";
+    } catch (err) {
+      setAlert("resetError", err.message);
+    } finally {
+      btn.disabled = false; btn.textContent = "Reset Password";
+    }
+  });
+</script>
+
+</body>
+</html>
